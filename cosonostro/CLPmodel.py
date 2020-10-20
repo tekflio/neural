@@ -10,6 +10,7 @@ import fastmri
 from fastmri.data import transforms as T
 
 import cv2
+#from numba import jit, cuda
 
 class Net(nn.Module):
 	# Here we define the Neural Network Structure
@@ -20,10 +21,10 @@ class Net(nn.Module):
         self.shuffle_up_4 = ComplexShuffleUp(4)
         self.shuffle_up_2 = ComplexShuffleUp(2)
         self.convBlock1 = ConvBlock1(16, 64)
-
-	self.lapl_dec = LaplacianDecomposition()
 		
-        # After the 4x Downsampling we have to split the computation in 3 branches
+        self.lapl_dec = LaplacianDecomposition()
+        
+		# After the 4x Downsampling we have to split the computation in 3 branches
         # Each will execute a different operation that will result in combining the output images with the
         # laplacian decomposition results
         
@@ -34,17 +35,17 @@ class Net(nn.Module):
                                      ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
                                      
         self.branch2 = nn.Sequential(ComplexConv2d(16, 64, 3, 1, 1), nn.ReLU(),
-				     ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
- 				     ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
+									 ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
+									 ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
 									 
         self.branch3 = nn.Sequential(ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
- 				     ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
-				     ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
+									 ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
+									 ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
 
         # Per-pixel convolution operation
         self.pixel_conv = PerPixelConv()
 		
-	# LinearUpsample and adding the branches
+		# LinearUpsample and adding the branches
         self.lapl_rec = LaplacianReconstruct()
 
         self.n_cascade = n_cascade
@@ -55,7 +56,7 @@ class Net(nn.Module):
             # The laplacian decomposition will produce different images composing the gaussian/laplacian pyramids
             # The gaussians are the downsampled images from the original one
             # The laplacian represents the 'errors' within the images related to the gaussian images
-            gaussian_3, lap_1, lap_2 = self.lapl_dec(mr_img)
+            gaussian_3, lap_1, lap_2 = self.lapl_dec(mr_img.cpu())
 
             # Resize along with the input/output channels
             mr_img = self.shuffle_down_4(mr_img)
@@ -66,10 +67,10 @@ class Net(nn.Module):
             # ---- 3 branches ----
             branch_1 = self.shuffle_up_4(mr_img)
             branch_1 = self.branch1(branch_1)
-		
+            
             branch_2 = self.shuffle_up_2(mr_img)
             branch_2 = self.branch2(branch_2)
-	
+            
             branch_3 = self.branch3(mr_img)
 
             output1 = torch.stack((self.pixel_conv(branch_1[...,0], lap_1[...,0]),
@@ -173,7 +174,7 @@ class LaplacianDecomposition(nn.Module):
 
                 L = torch.stack((T.to_tensor(lr), T.to_tensor(li)), dim=2)
                 lpA.append(L)
-            return gpA[2].unsqueeze(0).unsqueeze(0), lpA[2].unsqueeze(0).unsqueeze(0), lpA[1].unsqueeze(0).unsqueeze(0)
+            return gpA[2].unsqueeze(0).unsqueeze(0).cuda(), lpA[2].unsqueeze(0).unsqueeze(0).cuda(), lpA[1].unsqueeze(0).unsqueeze(0).cuda()
 
 
 class LaplacianReconstruct(nn.Module):
@@ -190,7 +191,7 @@ class LaplacianReconstruct(nn.Module):
     def upsample(x):
         batch, channel, height_in, width_in = x.size()
         height_out, width_out = height_in * 2, width_in * 2
-        x_upsample = torch.zeros((batch, channel, height_out, width_out))#, device='cuda')
+        x_upsample = torch.zeros((batch, channel, height_out, width_out), device='cuda')
         x_upsample[:, :, ::2, ::2] = x
         return x_upsample
 
