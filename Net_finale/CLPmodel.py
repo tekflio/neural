@@ -52,7 +52,7 @@ class Net(nn.Module):
 
         self.n_cascade = n_cascade
 
-    def forward(self, mr_img, k_space, mask):
+    def forward(self, mr_img, mk_space, mask):
         # Loop over num = cascades number
         for i in range(self.n_cascade):
 
@@ -95,7 +95,7 @@ class Net(nn.Module):
             output = self.pyramid_reconstruct(output, output1)
             
             # The DataConsistency Layer step is done here
-            mr_img = fft_utils.ifft2((1.0 - mask) * fft_utils.fft2(output) + k_space)
+            mr_img = fft_utils.ifft2((1.0 - mask) * fft_utils.fft2(output) + mk_space)
         return mr_img
 
 class PerPixelConv(nn.Module):
@@ -168,9 +168,9 @@ class PyramidDecompose(nn.Module):
 
     @staticmethod
     def upsample(x):
-        b, c, hin, win = x.size()
-        hout, wout = hin * 2, win * 2
-        x_upsample = torch.zeros((b, c, hout, wout), device='cuda')
+        batch, channel, height_in, width_in = x.size()
+        height_out, width_out = height_in * 2, width_in * 2
+        x_upsample = torch.zeros((batch, channel, height_out, width_out), device='cuda')
         x_upsample[:, :, ::2, ::2] = x
         return x_upsample
 
@@ -203,9 +203,9 @@ class PyramidReconstruct(nn.Module):
 
     @staticmethod
     def upsample(x):
-        b, c, hin, win = x.size()
-        hout, wout = hin * 2, win * 2
-        x_upsample = torch.zeros((b, c, hout, wout), device='cuda')
+        batch, channel, height_in, width_in = x.size()
+        height_out, width_out = height_in * 2, width_in * 2
+        x_upsample = torch.zeros((batch, channel, height_out, width_out), device='cuda')
         x_upsample[:, :, ::2, ::2] = x
         return x_upsample
 
