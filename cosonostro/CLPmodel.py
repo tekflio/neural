@@ -34,12 +34,12 @@ class Net(nn.Module):
                                      ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
                                      
         self.branch2 = nn.Sequential(ComplexConv2d(16, 64, 3, 1, 1), nn.ReLU(),
-									 ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
-									 ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
+				     ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
+ 				     ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
 									 
         self.branch3 = nn.Sequential(ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
-									 ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
-									 ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
+ 				     ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
+				     ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
 
         # Per-pixel convolution operation
         self.pixel_conv = PerPixelConv()
