@@ -79,7 +79,7 @@ class Net(nn.Module):
                                    self.pixel_conv(branch_2[...,1], lap_2[...,1])), dim=-1)
             output3 = torch.stack((self.pixel_conv(branch_3[...,0], gaussian_3[...,0]),
                                    self.pixel_conv(branch_3[...,1], gaussian_3[...,1])), dim=-1)
-
+		
 			# Performing the 2x linear upsample in order to add the different branches correctly
             output = self.lapl_rec(output3, output2)
             output = self.lapl_rec(output, output1)
@@ -88,26 +88,40 @@ class Net(nn.Module):
             mr_img = fft_utils.ifft2((1.0 - mask) * fft_utils.fft2(output) + mk_space)
         return mr_img
 
-class PerPixelConv(nn.Module):
-    def __init__(self):
-        super(PerPixelConv, self).__init__()
 
-    def forward(self, kernel, image):
-        batch, ksize2, height, width = kernel.size()
-        ksize = np.int(np.sqrt(ksize2))
-        padding = (ksize - 1) // 2
-        # Before computing the per pixel convolution step we need to prepare the
-        # inputs by doing some operation like padding and reshape in order to compute
-        # the multiplication between matrices
-        image = F.pad(image, (padding, padding, padding, padding))
-        image = image.unfold(2, ksize, 1).unfold(3, ksize, 1)
-        image = image.permute(0, 2, 3, 1, 5, 4).contiguous()
-        image = image.reshape(batch, height, width, 1, -1)
-        kernel = kernel.permute(0, 2, 3, 1).unsqueeze(-1)
-        output = torch.matmul(image, kernel)
-        output = output.reshape(batch, height, width, -1)
-        output = output.permute(0, 3, 1, 2).contiguous()
+class ComplexShuffleDown(nn.Module):
+    # Perform resize
+    def __init__(self, factor):
+        super(ComplexShuffleDown, self).__init__()
+        self.factor = factor
+
+    def forward(self, x):
+        batch, channel_in, height_in, width_in, complex_channel = x.size()
+        channel_out = channel_in * (self.factor ** 2)
+        height_out = height_in // self.factor
+        width_out = width_in // self.factor
+        output = x.view(batch, channel_in, height_out, self.factor, width_out, self.factor, complex_channel)
+        output = output.permute(0, 1, 5, 3, 2, 4, 6).contiguous()
+        output = output.view(batch, channel_out, height_out, width_out, complex_channel)
         return output
+
+
+class ComplexShuffleUp(nn.Module):
+    # Perform resize
+    def __init__(self, factor):
+        super(ComplexShuffleUp, self).__init__()
+        self.factor = factor
+
+    def forward(self, x):
+        batch, channel_in, height_in, width_in, complex_channel = x.size()
+        channel_out = channel_in // (self.factor ** 2)
+        height_out = height_in * self.factor
+        width_out = width_in * self.factor
+        output = x.view(batch, channel_out, self.factor, self.factor, height_in, width_in, complex_channel)
+        output = output.permute(0, 1, 4, 3, 5, 2, 6).contiguous()
+        output = output.view(batch, channel_out, height_out, width_out, complex_channel)
+        return output
+
 
 	# The residual-block is used in the ConvBlock1 loop
 class ResidualBlock(nn.Module):
@@ -135,6 +149,23 @@ class ConvBlock1(nn.Module):
 
     def forward(self, x):
         return self.convBlock1(x)
+
+
+class ComplexConv2d(nn.Module):
+    # In order to compute the convolution step on complex data that required an additive dimension
+    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True):
+        super(ComplexConv2d, self).__init__()
+
+        self.conv_real = nn.Conv2d(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
+                                 dilation=dilation, groups=groups, bias=bias)
+        self.conv_imag = nn.Conv2d(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
+                                 dilation=dilation, groups=groups, bias=bias)
+
+    def forward(self, x):
+        real = self.conv_real(x[..., 0]) - self.conv_imag(x[..., 1])
+        imag = self.conv_imag(x[..., 0]) + self.conv_real(x[..., 1])
+        output = torch.stack((real, imag), dim=4)
+        return output
 
 
 class LaplacianDecomposition(nn.Module):
@@ -201,51 +232,24 @@ class LaplacianReconstruct(nn.Module):
         return recon
 
 
-class ComplexShuffleDown(nn.Module):
-    # Perform resize
-    def __init__(self, factor):
-        super(ComplexShuffleDown, self).__init__()
-        self.factor = factor
+class PerPixelConv(nn.Module):
+    def __init__(self):
+        super(PerPixelConv, self).__init__()
 
-    def forward(self, x):
-        batch, channel_in, height_in, width_in, complex_channel = x.size()
-        channel_out = channel_in * (self.factor ** 2)
-        height_out = height_in // self.factor
-        width_out = width_in // self.factor
-        output = x.view(batch, channel_in, height_out, self.factor, width_out, self.factor, complex_channel)
-        output = output.permute(0, 1, 5, 3, 2, 4, 6).contiguous()
-        output = output.view(batch, channel_out, height_out, width_out, complex_channel)
+    def forward(self, kernel, image):
+        batch, ksize2, height, width = kernel.size()
+        ksize = np.int(np.sqrt(ksize2))
+        padding = (ksize - 1) // 2
+        # Before computing the per pixel convolution step we need to prepare the
+        # inputs by doing some operation like padding and reshape in order to compute
+        # the multiplication between matrices
+        image = F.pad(image, (padding, padding, padding, padding))
+        image = image.unfold(2, ksize, 1).unfold(3, ksize, 1)
+        image = image.permute(0, 2, 3, 1, 5, 4).contiguous()
+        image = image.reshape(batch, height, width, 1, -1)
+        kernel = kernel.permute(0, 2, 3, 1).unsqueeze(-1)
+        output = torch.matmul(image, kernel)
+        output = output.reshape(batch, height, width, -1)
+        output = output.permute(0, 3, 1, 2).contiguous()
         return output
 
-
-class ComplexShuffleUp(nn.Module):
-    # Perform resize
-    def __init__(self, factor):
-        super(ComplexShuffleUp, self).__init__()
-        self.factor = factor
-
-    def forward(self, x):
-        batch, channel_in, height_in, width_in, complex_channel = x.size()
-        channel_out = channel_in // (self.factor ** 2)
-        height_out = height_in * self.factor
-        width_out = width_in * self.factor
-        output = x.view(batch, channel_out, self.factor, self.factor, height_in, width_in, complex_channel)
-        output = output.permute(0, 1, 4, 3, 5, 2, 6).contiguous()
-        output = output.view(batch, channel_out, height_out, width_out, complex_channel)
-        return output
-
-class ComplexConv2d(nn.Module):
-    # In order to compute the convolution step on complex data that required an additive dimension
-    def __init__(self, in_channel, out_channel, kernel_size, stride=1, padding=0, dilation=1, groups=1, bias=True):
-        super(ComplexConv2d, self).__init__()
-
-        self.conv_real = nn.Conv2d(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
-                                 dilation=dilation, groups=groups, bias=bias)
-        self.conv_imag = nn.Conv2d(in_channel, out_channel, kernel_size, stride=stride, padding=padding,
-                                 dilation=dilation, groups=groups, bias=bias)
-
-    def forward(self, x):
-        real = self.conv_real(x[..., 0]) - self.conv_imag(x[..., 1])
-        imag = self.conv_imag(x[..., 0]) + self.conv_real(x[..., 1])
-        output = torch.stack((real, imag), dim=4)
-        return output
