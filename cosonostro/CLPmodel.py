@@ -21,7 +21,7 @@ class Net(nn.Module):
         self.shuffle_up_2 = ComplexShuffleUp(2)
         self.convBlock1 = ConvBlock1(16, 64)
 
-		self.lapl_dec = LaplacianDecomposition()
+	self.lapl_dec = LaplacianDecomposition()
 		
         # After the 4x Downsampling we have to split the computation in 3 branches
         # Each will execute a different operation that will result in combining the output images with the
@@ -44,7 +44,7 @@ class Net(nn.Module):
         # Per-pixel convolution operation
         self.pixel_conv = PerPixelConv()
 		
-		# LinearUpsample and adding the branches
+	# LinearUpsample and adding the branches
         self.lapl_rec = LaplacianReconstruct()
 
         self.n_cascade = n_cascade
@@ -64,13 +64,12 @@ class Net(nn.Module):
             mr_img = self.convBlock1(mr_img)
 
             # ---- 3 branches ----
-            # 4x
             branch_1 = self.shuffle_up_4(mr_img)
             branch_1 = self.branch1(branch_1)
-            # 2x
+		
             branch_2 = self.shuffle_up_2(mr_img)
             branch_2 = self.branch2(branch_2)
-            # 1x
+	
             branch_3 = self.branch3(mr_img)
 
             output1 = torch.stack((self.pixel_conv(branch_1[...,0], lap_1[...,0]),
