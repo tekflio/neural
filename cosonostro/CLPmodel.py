@@ -22,6 +22,7 @@ class Net(nn.Module):
         self.shuffle_down_4 = ComplexShuffleDown(4)
         self.shuffle_up_4 = ComplexShuffleUp(4)
         self.shuffle_up_2 = ComplexShuffleUp(2)
+	
         self.convBlock1 = ConvBlock1(16, 64)
         
 		# After the 4x Downsampling we have to split the computation in 3 branches
