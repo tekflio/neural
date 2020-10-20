@@ -16,13 +16,13 @@ class Net(nn.Module):
 	# Here we define the Neural Network Structure
     def __init__(self, ksize=5, n_cascade=2):
         super(Net, self).__init__()
-
+        
+        self.lapl_dec = LaplacianDecomposition()
+		
         self.shuffle_down_4 = ComplexShuffleDown(4)
         self.shuffle_up_4 = ComplexShuffleUp(4)
         self.shuffle_up_2 = ComplexShuffleUp(2)
         self.convBlock1 = ConvBlock1(16, 64)
-		
-        self.lapl_dec = LaplacianDecomposition()
         
 		# After the 4x Downsampling we have to split the computation in 3 branches
         # Each will execute a different operation that will result in combining the output images with the
