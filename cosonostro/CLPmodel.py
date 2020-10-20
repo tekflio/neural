@@ -4,7 +4,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-import fft_utils
 from matplotlib import pyplot as plt
 import fastmri
 from fastmri.data import transforms as T
@@ -86,7 +85,7 @@ class Net(nn.Module):
             output = self.lapl_rec(output, output1)
 
             # The DataConsistency Layer step is done here
-            mr_img = fft_utils.ifft2((1.0 - mask) * fft_utils.fft2(output) + mk_space)
+            mr_img = fastmri.ifft2c((1.0 - mask) * fastmri.fft2c(output) + mk_space)
         return mr_img
 
 
@@ -185,7 +184,7 @@ class LaplacianDecomposition(nn.Module):
                 temp = torch.stack((T.to_tensor(Gr), T.to_tensor(Gi)), dim=2)
                 gaussian_pyramid.append(temp)
             
-	# generate Laplacian Pyramid for A
+			# generate Laplacian Pyramid for A
             laplacian_pyramid = []
             for i in range(3,0,-1):
                 size = (gaussian_pyramid[i - 1].shape[1], gaussian_pyramid[i - 1].shape[0])
@@ -203,9 +202,7 @@ class LaplacianDecomposition(nn.Module):
 
                 current_laplacian = torch.stack((T.to_tensor(lr), T.to_tensor(li)), dim=2)
                 laplacian_pyramid.append(current_laplacian)
-            return gaussian_pyramid[2].unsqueeze(0).unsqueeze(0).cuda(),
-		   laplacian_pyramid[2].unsqueeze(0).unsqueeze(0).cuda(),
-		   laplacian_pyramid[1].unsqueeze(0).unsqueeze(0).cuda()
+            return gaussian_pyramid[2].unsqueeze(0).unsqueeze(0).cuda(),  laplacian_pyramid[2].unsqueeze(0).unsqueeze(0).cuda(), laplacian_pyramid[1].unsqueeze(0).unsqueeze(0).cuda()
 
 
 class LaplacianReconstruct(nn.Module):
