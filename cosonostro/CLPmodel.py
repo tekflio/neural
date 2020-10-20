@@ -167,45 +167,44 @@ class ComplexConv2d(nn.Module):
         output = torch.stack((real, imag), dim=4)
         return output
 
-
+# We take the input image and we decompose it in order to have the 2 gaussian images and a
+# laplacian one. This will be useful later when performing the per-pixel convolution step
 class LaplacianDecomposition(nn.Module):
-	# We take the input image and we decompose it in order to have the 2 gaussian images and a
-    # laplacian one. This will be useful later when performing the per-pixel convolution step
 	def __init__(self):
             super(LaplacianDecomposition, self).__init__()
 
 	def forward(self, x):
-            img = x.squeeze(0).squeeze(0)
-            gpA = [img]
+            temp = x.squeeze(0).squeeze(0)
+            gaussian_pyramid = [temp]
             for i in range(3):
-                real = img[..., 0]
-                imm = img[..., 1]
+                real = temp[..., 0]
+                imm = temp[..., 1]
                 Gr = cv2.pyrDown(real.detach().numpy())
                 Gi = cv2.pyrDown(imm.detach().numpy())
-
-                img = torch.stack((T.to_tensor(Gr), T.to_tensor(Gi)), dim=2)
-
-                gpA.append(img)
-            # generate Laplacian Pyramid for A
-
-            lpA = []
+                temp = torch.stack((T.to_tensor(Gr), T.to_tensor(Gi)), dim=2)
+                gaussian_pyramid.append(temp)
+            
+	# generate Laplacian Pyramid for A
+            laplacian_pyramid = []
             for i in range(3,0,-1):
-                size = (gpA[i - 1].shape[1], gpA[i - 1].shape[0])
-                g = gpA[i]
-                real = g[..., 0].detach().numpy()
-                imm = g[..., 1].detach().numpy()
+                size = (gaussian_pyramid[i - 1].shape[1], gaussian_pyramid[i - 1].shape[0])
+                current_gaussian = gaussian_pyramid[i]
+                real = current_gaussian[..., 0].detach().numpy()
+                imm = current_gaussian[..., 1].detach().numpy()
 
-                gg = gpA[i-1]
+                next_gaussian = gaussian_pyramid[i-1]
 
                 GEr = cv2.pyrUp(real,  dstsize=size)
                 GEi = cv2.pyrUp(imm,  dstsize=size)
 
-                lr = cv2.subtract(gg[...,0].detach().numpy(), GEr)
-                li = cv2.subtract(gg[...,1].detach().numpy(), GEi)
+                lr = cv2.subtract(next_gaussian[...,0].detach().numpy(), GEr)
+                li = cv2.subtract(next_gaussian[...,1].detach().numpy(), GEi)
 
-                L = torch.stack((T.to_tensor(lr), T.to_tensor(li)), dim=2)
-                lpA.append(L)
-            return gpA[2].unsqueeze(0).unsqueeze(0).cuda(), lpA[2].unsqueeze(0).unsqueeze(0).cuda(), lpA[1].unsqueeze(0).unsqueeze(0).cuda()
+                current_laplacian = torch.stack((T.to_tensor(lr), T.to_tensor(li)), dim=2)
+                laplacian_pyramid.append(current_laplacian)
+            return gaussian_pyramid[2].unsqueeze(0).unsqueeze(0).cuda(),
+		   laplacian_pyramid[2].unsqueeze(0).unsqueeze(0).cuda(),
+		   laplacian_pyramid[1].unsqueeze(0).unsqueeze(0).cuda()
 
 
 class LaplacianReconstruct(nn.Module):
