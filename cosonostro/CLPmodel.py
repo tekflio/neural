@@ -15,36 +15,36 @@ class Net(nn.Module):
 	# Here we define the Neural Network Structure
     def __init__(self, ksize=5, n_cascade=2):
         super(Net, self).__init__()
-        
+
         self.lapl_dec = LaplacianDecomposition()
-		
+
         self.shuffle_down_4 = ComplexShuffleDown(4)
         self.shuffle_up_4 = ComplexShuffleUp(4)
         self.shuffle_up_2 = ComplexShuffleUp(2)
-	
+
         self.convBlock1 = ConvBlock1(16, 64)
-        
+
 		# After the 4x Downsampling we have to split the computation in 3 branches
         # Each will execute a different operation that will result in combining the output images with the
         # laplacian decomposition results
-        
+
         # Each of the followings is the ConvBlock2, we needed to change the input/output channels
         # in order to align to the paper specifics
         self.branch1 = nn.Sequential(ComplexConv2d(4, 64, 3, 1, 1), nn.ReLU(),
                                      ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
                                      ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
-                                     
+
         self.branch2 = nn.Sequential(ComplexConv2d(16, 64, 3, 1, 1), nn.ReLU(),
 									 ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
 									 ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
-									 
+
         self.branch3 = nn.Sequential(ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
 									 ComplexConv2d(64, 64, 3, 1, 1), nn.ReLU(),
 									 ComplexConv2d(64, ksize ** 2, 3, 1, 1), nn.ReLU())
 
         # Per-pixel convolution operation
         self.pixel_conv = PerPixelConv()
-		
+
 		# LinearUpsample and adding the branches
         self.lapl_rec = LaplacianReconstruct()
 
@@ -67,10 +67,10 @@ class Net(nn.Module):
             # ---- 3 branches ----
             branch_1 = self.shuffle_up_4(mr_img)
             branch_1 = self.branch1(branch_1)
-            
+
             branch_2 = self.shuffle_up_2(mr_img)
             branch_2 = self.branch2(branch_2)
-            
+
             branch_3 = self.branch3(mr_img)
 
             output1 = torch.stack((self.pixel_conv(branch_1[...,0], lap_1[...,0]),
@@ -79,7 +79,7 @@ class Net(nn.Module):
                                    self.pixel_conv(branch_2[...,1], lap_2[...,1])), dim=-1)
             output3 = torch.stack((self.pixel_conv(branch_3[...,0], gaussian_3[...,0]),
                                    self.pixel_conv(branch_3[...,1], gaussian_3[...,1])), dim=-1)
-		
+
 			# Performing the 2x linear upsample in order to add the different branches correctly
             output = self.lapl_rec(output3, output2)
             output = self.lapl_rec(output, output1)
@@ -183,7 +183,7 @@ class LaplacianDecomposition(nn.Module):
                 Gi = cv2.pyrDown(imm.detach().numpy())
                 temp = torch.stack((T.to_tensor(Gr), T.to_tensor(Gi)), dim=2)
                 gaussian_pyramid.append(temp)
-            
+
 			# generate Laplacian Pyramid for A
             laplacian_pyramid = []
             for i in range(3,0,-1):
@@ -234,19 +234,15 @@ class PerPixelConv(nn.Module):
         super(PerPixelConv, self).__init__()
 
     def forward(self, kernel, image):
-        batch, ksize2, height, width = kernel.size()
-        ksize = np.int(np.sqrt(ksize2))
-        padding = (ksize - 1) // 2
-        # Before computing the per pixel convolution step we need to prepare the
-        # inputs by doing some operation like padding and reshape in order to compute
-        # the multiplication between matrices
-        image = F.pad(image, (padding, padding, padding, padding))
-        image = image.unfold(2, ksize, 1).unfold(3, ksize, 1)
-        image = image.permute(0, 2, 3, 1, 5, 4).contiguous()
-        image = image.reshape(batch, height, width, 1, -1)
-        kernel = kernel.permute(0, 2, 3, 1).unsqueeze(-1)
-        output = torch.matmul(image, kernel)
-        output = output.reshape(batch, height, width, -1)
-        output = output.permute(0, 3, 1, 2).contiguous()
+        batch, ksize2, height, width = real1.size()     # 1, 25, 80, 80
+        image = F.pad(real2, (2, 2, 2, 2)) #[1,1,84,84]
+        #The second parameter is the kernel size that will establish the last tensor dimension
+        image = image.unfold(2, 5, 1) #[1, 1, 80, 84, 5]
+        image = image.unfold(3, 5, 1) #[1, 1, 80, 80, 5, 5]
+        image = image.permute(0, 2, 3, 1, 5, 4).contiguous() # [1, 80, 80, 1, 5, 5]
+        image = image.reshape(batch, height, width, 1, 25) # [1, 80, 80, 1, 25])
+        kernel = real1.permute(0, 2, 3, 1)   # [1, 80, 80, 25]
+        kernel = kernel.unsqueeze(-1)  # [1, 80, 80, 25, 1]
+        output = torch.matmul(image, kernel)   # [1, 80, 80, 1, 1]
+        output = output.squeeze(-1).squeeze(-1).unsqueeze(0)
         return output
-
