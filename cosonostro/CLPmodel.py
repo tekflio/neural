@@ -234,14 +234,14 @@ class PerPixelConv(nn.Module):
         super(PerPixelConv, self).__init__()
 
     def forward(self, kernel, image):
-        batch, ksize2, height, width = real1.size()     # 1, 25, 80, 80
+        batch, ksize2, height, width = kernel.size()     # 1, 25, 80, 80
         image = F.pad(real2, (2, 2, 2, 2)) #[1,1,84,84]
         #The second parameter is the kernel size that will establish the last tensor dimension
         image = image.unfold(2, 5, 1) #[1, 1, 80, 84, 5]
         image = image.unfold(3, 5, 1) #[1, 1, 80, 80, 5, 5]
         image = image.permute(0, 2, 3, 1, 5, 4).contiguous() # [1, 80, 80, 1, 5, 5]
         image = image.reshape(batch, height, width, 1, 25) # [1, 80, 80, 1, 25])
-        kernel = real1.permute(0, 2, 3, 1)   # [1, 80, 80, 25]
+        kernel = kernel.permute(0, 2, 3, 1)   # [1, 80, 80, 25]
         kernel = kernel.unsqueeze(-1)  # [1, 80, 80, 25, 1]
         output = torch.matmul(image, kernel)   # [1, 80, 80, 1, 1]
         output = output.squeeze(-1).squeeze(-1).unsqueeze(0)
